@@ -1,11 +1,7 @@
 import java.io.*;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLSocketFactory;
-import java.util.List;
-import java.util.ArrayList;
-import java.io.OutputStreamWriter;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.net.*;
+import javax.net.ssl.*;
+import java.util.*;
 
 public class TCPClient {
 
@@ -97,7 +93,6 @@ public class TCPClient {
         //Preparação para fazer conexão segura SSL
         SSLSocketFactory connection = (SSLSocketFactory) SSLSocketFactory.getDefault();
 
-	    //Arrumar as exceções
         try {
             boolean running = true;
             while (running) {
@@ -115,8 +110,7 @@ public class TCPClient {
                 System.out.println("Conectando no servidor...");
 
                 // Cria conexão na porta 443: é conexão segura https
-                try (SSLSocket socket = (SSLSocket) connection.createSocket("pokeapi.co", 443);)
-                {
+                try (SSLSocket socket = (SSLSocket) connection.createSocket("pokeapi.co", 443);) {
                     System.out.println("Socket criado com sucesso");
 
                     //Prepara os canais de entrada e saída de dados:
@@ -139,7 +133,7 @@ public class TCPClient {
                     boolean isHeader = true;
                     StringBuilder jsonBody = new StringBuilder();
 
-		            // Separando cabeçalho do corpo do json:
+                    // Separando cabeçalho do corpo do json:
                     //Leitura da resposta linha por linha
                     while ((responseLine = inFromServer.readLine()) != null) {
                         if (isHeader) {
@@ -157,9 +151,9 @@ public class TCPClient {
                     //Impressão dos resultados encontrados:
                     String pokeName = getNome(json);
 
-                    if (pokeName.equals("N/A")){
+                    if (pokeName.equals("N/A")) {
                         System.out.println("Ops... nome inválido. Digite de novo.");
-                    }else{
+                    } else {
                         System.out.println("---------DADOS ENCONTRADOS---------");
                         System.out.println();
 
@@ -172,7 +166,7 @@ public class TCPClient {
                         System.out.println();
 
                         String pokeID = getID(json);
-                        System.out.println("ID do " + pokeName + ": "+ pokeID);
+                        System.out.println("ID do " + pokeName + ": " + pokeID);
                         System.out.println();
 
                         System.out.print("Tipos: ");
@@ -194,7 +188,8 @@ public class TCPClient {
                         getStatus(json);
                         System.out.println();
                     }
-
+                }catch (UnknownHostException ex) {
+                    System.out.println("Servidor não encontrado: " + ex.getMessage());
                 } catch (IOException ioe) {
                     System.err.println("Erro na conexão ou leitura: " + ioe.getMessage());
                 }
