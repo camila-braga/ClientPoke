@@ -18,6 +18,7 @@ public class TCPClient {
         if (end < 0) return "N/A";
         return json.substring(start, end);
     }
+
     //Função para tentar pegar as ocorrências que sempre ficam repetindo
     private static List<String> extractAll(String json, String prefix, String suffix) {
         List<String> items = new ArrayList<>();
@@ -31,11 +32,10 @@ public class TCPClient {
         }
         return items;
     }
+
     //Função para pegar o nome do Pokemon no json
     public static String getNome(String json){
-        int idxId = json.indexOf("\"id\":"); // evita pegar o nome errado de outro campo
-        int idxName = json.indexOf("\"name\":\"", idxId);
-        String extractedName = json.substring(idxName + 8, json.indexOf("\"", idxName + 8)); //extrai o valor entre aspas.
+        String extractedName = extractField(json, "\"forms\":[{\"name\":\"", "\"");
         return extractedName;
     }
 
@@ -84,6 +84,12 @@ public class TCPClient {
         }
     }
 
+    //Função para exibir o link que mostra a foto do pokemon
+    public static String getPicture(String json){
+       String linkPicture =  extractField(json, "\"front_default\":", ",");
+       return linkPicture;
+    }
+
     //Função principal
     public static void main(String[] args) {
         //Preparação para ler o input do usuário pelo teclado
@@ -91,7 +97,7 @@ public class TCPClient {
         //Preparação para fazer conexão segura SSL
         SSLSocketFactory connection = (SSLSocketFactory) SSLSocketFactory.getDefault();
 
-	    //Pensei e refazer esse try e catch do jeito que mostrei no discord. Pra ficar mais legível.
+	    //Arrumar as exceções
         try {
             boolean running = true;
             while (running) {
@@ -107,13 +113,11 @@ public class TCPClient {
                 }
 
                 System.out.println("Conectando no servidor...");
-                System.out.println();
 
                 // Cria conexão na porta 443: é conexão segura https
                 try (SSLSocket socket = (SSLSocket) connection.createSocket("pokeapi.co", 443);)
                 {
                     System.out.println("Socket criado com sucesso");
-                    System.out.println();
 
                     //Prepara os canais de entrada e saída de dados:
                     PrintWriter outToServer = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
@@ -121,7 +125,7 @@ public class TCPClient {
 
                     // Get apenas padrão HTTP
                     //Envia uma requisição HTTP/1.1 para buscar o Pokémon com o nome digitado
-                    outToServer.print("GET /api/v2/pokemon/" + name + " HTTP/1.1\r\n");
+                    outToServer.print("GET /api/v2/pokemon/" + name + " HTTP/1.0\r\n");
                     //\r\n marca o fim de cada linha, \r\n\r\n marca o fim do cabeçalho HTTP.
                     outToServer.print("Host: pokeapi.co\r\n");
                     System.out.println("Conexão com servidor bem sucedida!");
@@ -151,83 +155,52 @@ public class TCPClient {
                     String json = jsonBody.toString();
 
                     //Impressão dos resultados encontrados:
-                    System.out.println("---------DADOS ENCONTRADOS---------");
-                    System.out.println();
-
                     String pokeName = getNome(json);
-                    System.out.println("Nome do Pokémon: " + pokeName);
-                    System.out.println();
 
-                    String pokeID = getID(json);
-                    System.out.println("ID do Pokémon: " + pokeID);
-                    System.out.println();
+                    if (pokeName.equals("N/A")){
+                        System.out.println("Ops... nome inválido. Digite de novo.");
+                    }else{
+                        System.out.println("---------DADOS ENCONTRADOS---------");
+                        System.out.println();
 
-                    System.out.print("Tipos: ");
-                    String pokeTypes = getTypes(json);
-                    System.out.println(pokeTypes);
-                    System.out.println();
+                        System.out.println("Nome do Pokémon: " + pokeName);
+                        System.out.println();
 
-                    System.out.print("Habilidade: ");
-                    String pokeAbilities = getAbilities(json);
-                    System.out.println(pokeAbilities);
-                    System.out.println();
+                        System.out.println("Foto do " + pokeName + ": ");
+                        String imagem = getPicture(json);
+                        System.out.println(imagem);
+                        System.out.println();
 
-                    System.out.print("Moveset: ");
-                    String pokeMoves = getMoves(json);
-                    System.out.println(pokeMoves);
-                    System.out.println();
+                        String pokeID = getID(json);
+                        System.out.println("ID do " + pokeName + ": "+ pokeID);
+                        System.out.println();
 
-                    System.out.println("Status:");
-                    getStatus(json);
-                    System.out.println();
+                        System.out.print("Tipos: ");
+                        String pokeTypes = getTypes(json);
+                        System.out.println(pokeTypes);
+                        System.out.println();
 
+                        System.out.print("Habilidade: ");
+                        String pokeAbilities = getAbilities(json);
+                        System.out.println(pokeAbilities);
+                        System.out.println();
 
-                    /*
-                    // --- Nome // Esse nome ainda tá meio buxa > Tava testando com o Mudkip .-. < Ele tenta pular as repetições
-                    int idxId = json.indexOf("\"id\":"); // evita pegar o nome errado de outro campo
-		            int idxName = json.indexOf("\"name\":\"", idxId);
-                    String extractedName = json.substring(idxName + 8, json.indexOf("\"", idxName + 8)); //extrai o valor entre aspas.
-                    System.out.println("Nome do Pokémon: " + extractedName);
+                        System.out.print("Moveset: ");
+                        String pokeMoves = getMoves(json);
+                        System.out.println(pokeMoves);
+                        System.out.println();
 
-		            // --- Num dex
-		            String extractedId = extractField(json, "\"id\":", ","); // extrai o número do ID entre "id": e a próxima vírgula.
-		            System.out.println("ID do Pokémon: " + extractedId);
-
-                    // --- Tipos
-                    System.out.print("Tipos: ");
-                    for (String t: extractAll(json, "\"type\":{\"name\":\"", "\"")){ //extrai todos os tipos
-                        System.out.print(t + " ");
+                        System.out.println("Status:");
+                        getStatus(json);
+                        System.out.println();
                     }
-
-                    // --- Ability (Inata)
-                    System.out.print("Habilidade: ");
-                    for (String a: extractAll(json, "\"ability\":{\"name\":\"", "\"")){ //Pega todas as habilidades
-                        System.out.print(a + " " + "-");
-                    }
-                    System.out.println();
-
-                    // --- Habilidades
-                    System.out.print("Moveset: ");
-                    for (String m : extractAll(json, "\"move\":{\"name\":\"", "\"")) { //Pega todos os movimentos
-                         System.out.print(m + " ");
-                    }
-                    System.out.println();
-
-                    // --- Status base
-                    List<String> statNames  = extractAll(json, "\"stat\":{\"name\":\"", "\""); //Extrai os nomes dos atributos e seus valores.
-                    List<String> statValues = extractAll(json, "\"base_stat\":", ",");
-                    System.out.println("Status:");
-                    for (int i = 0; i < statNames.size() && i < statValues.size(); i++) {
-                        System.out.printf("  %s = %s%n", statNames.get(i), statValues.get(i));
-                    }
-                    System.out.println("\n");*/
 
                 } catch (IOException ioe) {
                     System.err.println("Erro na conexão ou leitura: " + ioe.getMessage());
                 }
             }
         } catch (IOException e) {
-            System.err.println("Nome não existe. Erro de input: " + e.getMessage());
+            System.err.println("Erro de input: " + e.getMessage());
         }
     }
 }
