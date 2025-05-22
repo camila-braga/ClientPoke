@@ -5,6 +5,13 @@ import java.util.*;
 
 public class TCPClient {
 
+    // ANSI para cores
+    private static final String ANSI_RESET  = "\u001B[0m";
+    private static final String ANSI_CYAN   = "\u001B[36m";
+    private static final String ANSI_YELLOW = "\u001B[33m";
+    private static final String ANSI_RED    = "\u001B[31m";
+    private static final String ANSI_GREEN  = "\u001B[32m";
+
     //Função para pegar só a primeira ocorrência
     private static String extractField(String json, String prefix, String suffix) {
         int start = json.indexOf(prefix);
@@ -28,6 +35,39 @@ public class TCPClient {
         }
         return items;
     }
+    
+    //Função para buscar JSON via socket
+    private static String fetchJson(String path) throws IOException {
+             //Preparação para fazer conexão segura SSL
+        SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+        try (SSLSocket socket = (SSLSocket) factory.createSocket("pokeapi.co", 443);
+             PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+            //Envia requisição HTTP
+            out.print("GET " + path + " HTTP/1.1\r\n");
+            out.print("Host: pokeapi.co\r\n");
+            out.print("Connection: close\r\n");
+            out.print("\r\n");
+            out.flush();
+
+            //Lê status HTTP
+            String statusLine = in.readLine();
+            if (statusLine == null || !statusLine.startsWith("HTTP/1.1")) {
+                throw new IOException("Resposta inválida do servidor");
+            }
+            int statusCode = Integer.parseInt(statusLine.split(" ")[1]);
+            String line;
+            while ((line = in.readLine()) != null && !line.isEmpty());
+            if (statusCode == 404) return ""; //não encontrado
+            if (statusCode != 200) throw new IOException("Erro HTTP: " + statusCode);
+
+            //Lê corpo da resposta
+            StringBuilder body = new StringBuilder();
+            while ((line = in.readLine()) != null) body.append(line);
+            return body.toString();
+        }
+    }
 
     //Função para pegar o nome do Pokemon no json
     public static String getNome(String json){
@@ -37,165 +77,176 @@ public class TCPClient {
 
     //Função para pegar a id do Pokemon no json
     public static String getID(String json){
-        String extractedId = extractField(json, "\"id\":", ","); // extrai o número do ID entre "id": e a próxima vírgula.
+        String extractedId = extractField(json, "\"id\":", ",");
         return extractedId;
     }
 
     //Função para pegar o tipo do Pokemon no json
     public static String getTypes(String json){
         StringBuilder result = new StringBuilder();
-        for (String t: extractAll(json, "\"type\":{\"name\":\"", "\"")){ //extrai todos os tipos
+        for (String t: extractAll(json, "\"type\":{\"name\":\"", "\"")){
             result.append(t).append(" ");
         }
-        String types = result.toString();
-        return types;
+        return result.toString().trim();
     }
 
     //Função para pegar as habilidades do Pokemon no json
     public static String getAbilities(String json){
         StringBuilder result = new StringBuilder();
-        for (String a: extractAll(json, "\"ability\":{\"name\":\"", "\"")){ //Pega todas as habilidades
+        for (String a: extractAll(json, "\"ability\":{\"name\":\"", "\"")){
             result.append(a).append(" ");
         }
-        String abilities = result.toString();
-        return abilities;
+        return result.toString().trim();
+    }
+
+    //Função para pegar habilidades plus do Pokemon no json
+    public static List<String> getAbilitiesList(String json){
+        return extractAll(json, "\"ability\":{\"name\":\"", "\"");
+    }
+
+    //Função para retornar uma habilidade aleatória
+    public static String getRandomAbility(String json){
+        List<String> list = getAbilitiesList(json);
+        if(list.isEmpty()) return "N/A";
+        return list.get(new Random().nextInt(list.size()));
     }
 
     //Função para pegar habilidades plus do Pokemon no json
     public static String getMoves(String json){
         StringBuilder result = new StringBuilder();
-        for (String m : extractAll(json, "\"move\":{\"name\":\"", "\"")) { //Pega todos os movimentos
+        for (String m : extractAll(json, "\"move\":{\"name\":\"", "\"")) {
             result.append(m).append(" ");
         }
-        String moves = result.toString();
-        return moves;
+        return result.toString().trim();
     }
 
     //Função para pegar os status do Pokemon no json
     public static void getStatus(String json){
-        List<String> statNames  = extractAll(json, "\"stat\":{\"name\":\"", "\""); //Extrai os nomes dos atributos e seus valores.
+        List<String> statNames  = extractAll(json, "\"stat\":{\"name\":\"", "\"" );
         List<String> statValues = extractAll(json, "\"base_stat\":", ",");
+        System.out.println(ANSI_GREEN + "Status:" + ANSI_RESET);
         for (int i = 0; i < statNames.size() && i < statValues.size(); i++) {
-            System.out.printf("  %s = %s%n", statNames.get(i), statValues.get(i));
+            System.out.printf(ANSI_YELLOW + "  %s" + ANSI_RESET + " = %s%n", statNames.get(i), statValues.get(i));
         }
     }
 
     //Função para exibir o link que mostra a foto do pokemon
     public static String getPicture(String json){
-       String linkPicture =  extractField(json, "\"front_default\":", ",");
+       String linkPicture =  extractField(json, "\"front_default\":\"", "\"");
        return linkPicture;
+    }
+
+    //Função para calcular fraquezas
+    public static String getWeaknesses(String json) throws IOException{
+        Set<String> weak = new HashSet<>();
+        String typesBlock = extractField(json, "\"types\":", "]") + "]";
+        for(String t: extractAll(typesBlock, "\"name\":\"", "\"")){
+            String tj = fetchJson("/api/v2/type/"+t);
+            String dd = extractField(tj, "\"double_damage_from\":[", "]");
+            weak.addAll(extractAll(dd, "\"name\":\"", "\""));
+        }
+        return String.join(" ", weak);
     }
 
     //Função principal
     public static void main(String[] args) {
-        //Preparação para ler o input do usuário pelo teclado
         BufferedReader inFromClient = new BufferedReader(new InputStreamReader(System.in));
-        //Preparação para fazer conexão segura SSL
         SSLSocketFactory connection = (SSLSocketFactory) SSLSocketFactory.getDefault();
 
         try {
             boolean running = true;
             while (running) {
-                System.out.print("Digite o nome do Pokémon ou 'sair' para pular fora: ");
-                System.out.println();
-                String name = inFromClient.readLine().trim().toLowerCase(); //Leitura do nome do pokemon
+                // Prompt para o usuário
+                System.out.print(ANSI_CYAN + "Digite o nome do Pokémon ou 'sair': " + ANSI_RESET);
+                String name = inFromClient.readLine().trim().toLowerCase();
 
-                //Digitar "sair" encerra a pesquisa pelo pokemon
+                // Comando sair encerra o loop
                 if (name.equals("sair")) {
                     running = false;
-                    System.out.println("Você se desconectou! Até logo :)");
+                    System.out.println(ANSI_GREEN + "Você se desconectou! Até logo :)" + ANSI_RESET);
                     continue;
                 }
 
-                System.out.println("Conectando no servidor...");
-
-                // Cria conexão na porta 443: é conexão segura https
-                try (SSLSocket socket = (SSLSocket) connection.createSocket("pokeapi.co", 443);) {
-                    System.out.println("Socket criado com sucesso");
-
-                    //Prepara os canais de entrada e saída de dados:
+                // Status de conexão
+                System.out.println(ANSI_YELLOW + "Conectando no servidor..." + ANSI_RESET);
+                try (SSLSocket socket = (SSLSocket) connection.createSocket("pokeapi.co", 443)) {
                     PrintWriter outToServer = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
                     BufferedReader inFromServer = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-                    // Get apenas padrão HTTP
-                    //Envia uma requisição HTTP/1.1 para buscar o Pokémon com o nome digitado
-                    outToServer.print("GET /api/v2/pokemon/" + name + " HTTP/1.0\r\n");
-                    //\r\n marca o fim de cada linha, \r\n\r\n marca o fim do cabeçalho HTTP.
+                    // Envia a requisição HTTP
+                    outToServer.print("GET /api/v2/pokemon/" + name + " HTTP/1.1\r\n");
                     outToServer.print("Host: pokeapi.co\r\n");
-                    System.out.println("Conexão com servidor bem sucedida!");
-                    System.out.println();
-                    outToServer.print("Connection: close\r\n");  //encerra a conexão
+                    outToServer.print("Connection: close\r\n");
                     outToServer.print("\r\n");
                     outToServer.flush();
 
-                    // Recebendo a resposta
-                    String responseLine;
-                    boolean isHeader = true;
+                    // Lê resposta e separa cabeçalho de corpo
+                    String responseLine; boolean isHeader = true;
                     StringBuilder jsonBody = new StringBuilder();
-
-                    // Separando cabeçalho do corpo do json:
-                    //Leitura da resposta linha por linha
                     while ((responseLine = inFromServer.readLine()) != null) {
                         if (isHeader) {
-                            //fim do cabeçalho quando encontra linha em branco
-                            if (responseLine.isEmpty()) {
-                                isHeader = false;
-                            }
+                            if (responseLine.isEmpty()) isHeader = false;
                         } else {
                             jsonBody.append(responseLine);
                         }
                     }
-                    //Transforma o StringBuilder em String para facilitar o tratamento.
                     String json = jsonBody.toString();
 
-                    //Impressão dos resultados encontrados:
+                    // Extrai nome para validação
                     String pokeName = getNome(json);
-
                     if (pokeName.equals("N/A")) {
-                        System.out.println("Ops... nome inválido. Digite de novo.");
+                        System.out.println(ANSI_RED + "Ops... nome inválido. Digite de novo." + ANSI_RESET);
                     } else {
-                        System.out.println("---------DADOS ENCONTRADOS---------");
-                        System.out.println();
+                        // Título dos dados
+                        System.out.println(ANSI_GREEN + "--------- DADOS ENCONTRADOS ---------" + ANSI_RESET);
 
-                        System.out.println("Nome do Pokémon: " + pokeName);
-                        System.out.println();
+                        // Exibe Nome
+                        System.out.println(ANSI_CYAN + "Nome do Pokémon:" + ANSI_RESET + " " + pokeName);
 
-                        System.out.println("Foto do " + pokeName + ": ");
-                        String imagem = getPicture(json);
-                        System.out.println(imagem);
-                        System.out.println();
+                        // Exibe Foto (URL)
+                        System.out.println(ANSI_CYAN + "Foto:" + ANSI_RESET + " " + getPicture(json));
 
-                        String pokeID = getID(json);
-                        System.out.println("ID do " + pokeName + ": " + pokeID);
-                        System.out.println();
+                        // Exibe ID
+                        System.out.println(ANSI_CYAN + "ID:" + ANSI_RESET + " " + getID(json));
 
-                        System.out.print("Tipos: ");
-                        String pokeTypes = getTypes(json);
-                        System.out.println(pokeTypes);
-                        System.out.println();
+                        // Exibe Tipos com cor diferenciada
+                        System.out.println(ANSI_YELLOW + "Tipo(s):" + ANSI_RESET + " " + getTypes(json));
 
-                        System.out.print("Habilidade: ");
-                        String pokeAbilities = getAbilities(json);
-                        System.out.println(pokeAbilities);
-                        System.out.println();
+                        // Exibe Ability aleatória com cor diferenciada
+                        System.out.println(ANSI_YELLOW + "Ability:" + ANSI_RESET + " " + getRandomAbility(json));
 
-                        System.out.print("Moveset: ");
-                        String pokeMoves = getMoves(json);
-                        System.out.println(pokeMoves);
-                        System.out.println();
+                        // Exibe Moveset limitado em cor distinta
+                        List<String> moves = extractAll(json, "\"move\":{\"name\":\"", "\"");
+                        int limit = 10;
+                        System.out.println(ANSI_YELLOW + "Moveset (primeiros " + limit + "):" + ANSI_RESET);
+                        for (int i = 0; i < Math.min(limit, moves.size()); i++) {
+                            System.out.println("  - " + moves.get(i));
+                        }
+                        if (moves.size() > limit) {
+                            System.out.println(ANSI_CYAN + "Digite 'mostrar mais' para ver todos os moves." + ANSI_RESET);
+                            if (inFromClient.readLine().trim().equalsIgnoreCase("mostrar mais")) {
+                                System.out.println(ANSI_YELLOW + "Moveset completo:" + ANSI_RESET);
+                                for (String m : moves) System.out.println("  - " + m);
+                            }
+                        }
 
-                        System.out.println("Status:");
+                        // Exibe Fraquezas em cor vermelha destacada
+                        System.out.println(ANSI_RED + "Fraquezas:" + ANSI_RESET + " " + getWeaknesses(json));
+
+                        // Exibe status final
                         getStatus(json);
                         System.out.println();
                     }
-                }catch (UnknownHostException ex) {
-                    System.out.println("Servidor não encontrado: " + ex.getMessage());
+
+                } catch (UnknownHostException ex) {
+                    System.out.println(ANSI_RED + "Servidor não encontrado: " + ex.getMessage() + ANSI_RESET);
                 } catch (IOException ioe) {
-                    System.err.println("Erro na conexão ou leitura: " + ioe.getMessage());
+                    System.out.println(ANSI_RED + "Erro I/O: " + ioe.getMessage() + ANSI_RESET);
                 }
             }
         } catch (IOException e) {
-            System.err.println("Erro de input: " + e.getMessage());
+            System.out.println(ANSI_RED + "Erro de input: " + e.getMessage() + ANSI_RESET);
         }
     }
 }
+
